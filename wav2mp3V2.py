@@ -3,7 +3,6 @@ from pathlib import Path
 import subprocess
 import time
 from concurrent.futures import ThreadPoolExecutor
-import re
 
 
 def get_folder_size_mb(path):
@@ -17,9 +16,8 @@ def get_folder_size_mb(path):
 
 def convert_single_wav(wav_path):
     filename_lower = wav_path.name.lower()
-
     if any(skip_pattern in filename_lower for skip_pattern in ['YOUR_FILE_PATTERN']):
-        return f'Skipping : {wav_path.name}'
+        return f'Skipping: {wav_path.name}'
 
     mp3_path = wav_path.with_suffix('.mp3')
     if mp3_path.exists():
@@ -28,7 +26,7 @@ def convert_single_wav(wav_path):
     try:
         cmd = [
             'ffmpeg', '-i', str(wav_path),
-            '-codec:a', 'mp3', '-b:a', '192k',
+            '-codec:a', 'libmp3lame', '-b:a', '192k',  # fixed codec name
             '-y', str(mp3_path)
         ]
         start_time = time.perf_counter()
@@ -42,12 +40,23 @@ def convert_single_wav(wav_path):
 
 def fast_convert_wav_to_mp3(root_folder, max_workers=8):
     root_path = Path(root_folder)
-    start_total = time.perf_counter()
 
+    # ✅ Validate path exists before doing anything
+    if not root_path.exists():
+        print(f'❌ Folder not found: {root_path}')
+        return
+    if not root_path.is_dir():
+        print(f'❌ Not a directory: {root_path}')
+        return
+
+    start_total = time.perf_counter()
     initial_size_mb = get_folder_size_mb(root_folder)
     print(f'📁 Initial folder size: {initial_size_mb:.1f} MB')
 
-    wav_files = list(root_path.rglob('*.wav'))
+    # ✅ Match both .WAV and .wav to be safe
+    wav_files = list(root_path.rglob('*.WAV')) + list(root_path.rglob('*.wav'))
+    wav_files = list(set(wav_files))  # deduplicate
+
     if not wav_files:
         print('❌ No WAV files found!')
         return
@@ -60,13 +69,12 @@ def fast_convert_wav_to_mp3(root_folder, max_workers=8):
     total_time = time.perf_counter() - start_total
     final_size_mb = get_folder_size_mb(root_folder)
     savings_mb = initial_size_mb - final_size_mb
-    done_count = len([r for r in results if "Done:" in r])
+    done_count = len([r for r in results if 'Done:' in r])
 
     print(f'\n🚀 SUMMARY:')
     print(f'✅ {done_count}/{len(wav_files)} files converted')
-    print(f'⏱️  Total time: {total_time:.1f}s')
-    if len(wav_files) > 0:
-        print(f'   ({total_time/len(wav_files):.2f}s/file avg)')
+    print(
+        f'⏱️  Total time: {total_time:.1f}s ({total_time/len(wav_files):.2f}s/file avg)')
     print(
         f'💾 Before: {initial_size_mb:.1f} MB → After: {final_size_mb:.1f} MB')
     print(
@@ -78,4 +86,5 @@ def fast_convert_wav_to_mp3(root_folder, max_workers=8):
 
 # Usage
 fast_convert_wav_to_mp3(
-    'YOUR_FILE_PATH}', max_workers=8)
+    'YOUR_FILE_PATH', max_workers=8)
+
